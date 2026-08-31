@@ -5,6 +5,7 @@
 #-------------------------------------------------
 
 QT       += core gui
+QT      += multimedia
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -25,36 +26,82 @@ DEFINES += QT_DEPRECATED_WARNINGS
 CONFIG += c++11
 
 SOURCES += \
+        ammo.cpp \
         bullet.cpp \
+        bullet2.cpp \
+        controles.cpp \
         enemy.cpp \
+        enemyship.cpp \
         game.cpp \
+        game2.cpp \
+        ganar.cpp \
+        healer.cpp \
+        healthbar.cpp \
         inicarsesion2.cpp \
         main.cpp \
         mainwindow.cpp \
+        mostrarranking.cpp \
         nodo.cpp \
         obstaculo.cpp \
+        pasarnivel.cpp \
+        pausar.cpp \
+        perder.cpp \
         player1.cpp \
+        player2.cpp \
         principal.cpp \
         registro.cpp \
-        vec3.cpp
+        score.cpp \
+        seleccionarnivel.cpp \
+        ship.cpp \
+        sinenemyship.cpp \
+        spaceship.cpp \
+        vec3.cpp \
+        ventanaprincipalusuario.cpp
 
 HEADERS += \
+        ammo.h \
         bullet.h \
+        bullet2.h \
+        controles.h \
         enemy.h \
+        enemyship.h \
         game.h \
+        game2.h \
+        ganar.h \
+        healer.h \
+        healthbar.h \
         inicarsesion2.h \
         mainwindow.h \
+        mostrarranking.h \
         nodo.h \
         obstaculo.h \
+        pasarnivel.h \
+        pausar.h \
+        perder.h \
         player1.h \
+        player2.h \
         principal.h \
         registro.h \
-        vec3.h
+        score.h \
+        seleccionarnivel.h \
+        ship.h \
+        sinenemyship.h \
+        spaceship.h \
+        vec3.h \
+        ventanaprincipalusuario.h
 
 FORMS += \
+        controles.ui \
+        ganar.ui \
         inicarsesion2.ui \
+        mostrarranking.ui \
+        pasarnivel.ui \
+        pausar.ui \
+        perder.ui \
         principal.ui \
-        registro.ui
+        registro.ui \
+        seleccionarnivel.ui \
+        ventanaprincipalusuario.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -63,3 +110,5 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 RESOURCES += \
     resources.qrc
+
+RC_ICONS = icon.ico

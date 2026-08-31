@@ -11,10 +11,43 @@
 #include "bullet.h"
 #include <stdlib.h>
 #include <time.h>
+#include "player2.h"
 
-game::game(QWidget *parent)
+/* La clase game corresponde a nuestro juego principal.
+ * Esta clase tendrá dos modos de juego. El modo 1 corresponde al modo historia y el modo 2 al modo supervivencia.
+ * El contructor de esta clase recibe la direccion de memoria de dos variables que se encuentran en VentanaPrincipalUsuario.
+ * recibe el modo en que se va a jugar y el nombre del usuario que ha iniciado sesion.
+ */
+
+game::game(int * puntosInput,int * NivelInput,int ModoInput,string InicioSesion,QWidget *parent)
 {
-    SetNivelOrda(1,1);
+
+    // Almacena los puntos que tiene le jugador.
+    puntosTotales=puntosInput;
+
+    // Modo de juego.
+    modo = ModoInput;
+
+    // Nombre del usuario que ha iniciado sesion.
+    NickNameInicioSesion=QString::fromStdString(InicioSesion);
+
+    //Apuntadores. De esta manera puedo afectar la Variable NivelInput desde la variable NivelRetorna.
+    NivelRetornar=NivelInput;
+    SetNivelOrda(*NivelInput,1);
+
+    // Crea la variable de la interfaz que se genera si el jugador pausa el juego.
+    InterfazPausa=new pausar(NickNameInicioSesion);
+    connect(InterfazPausa,&pausar::buttonClicked,this,&game::ContinuarJugando);
+
+    // Crea la variable de la interfaz que se genera si al juador lo matan.
+    InterfazPerder= new perder();
+    if(modo==1)
+        InterfazPasarNivel= new PasarNivel();
+
+    //Crea la variable con la interfaz que se genera si el jugador gana el juego (Pasa el ultimo nivel.)
+    if(modo==1)
+        InterfazGanar= new ganar();
+
     //create a scene
     scene = new QGraphicsScene();
     scene->setSceneRect(0,0,2000,1200);
@@ -22,13 +55,12 @@ game::game(QWidget *parent)
 
     //create an item to put into the scene
     player = new player1();
-
+    if(modo==2)
+        player_2=new player2();
     //add previous item to the scene
-    scene->addItem(player);
-
-    //make rect focusable
-    player->setFlag(QGraphicsItem::ItemIsFocusable);
-    player->setFocus();
+    //scene->addItem(player);
+    if(modo==2)
+        scene->addItem(player_2);
 
     //add view
     view = new QGraphicsView(scene);
@@ -36,15 +68,26 @@ game::game(QWidget *parent)
         view->setBackgroundBrush(QBrush(QImage(":/BGI/escenario.png")));
     else
         view->setBackgroundBrush(QBrush(QImage(":/BGI/escenario2.png")));
-    //view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    //view->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
+    scene->addItem(player);
     view->setFixedSize(800,600);
-
+    if(modo==2)
+        view->setFixedSize(1280,720);
     player->setPos(700,700);
+    if(modo==2)
+        player_2->setPos(700,700);
+
+    //make rect focusable
+    player->setFlag(QGraphicsItem::ItemIsFocusable);
+    player->setFocus();
 
     view->show();
+    // Esta funcion esta blece los zombies que salen segun la ordan en la que se encuentre.
     SetZombiesPorOrda();
+
+
+    //Las funciones a continuacion inicializan y constituyen el campo vectorial.
+    //______________________________________________
     InicializarCuadros();
     EstablecerVecinos();
     EstablecerPisoQuitaVida();
@@ -55,219 +98,543 @@ game::game(QWidget *parent)
     ConstruccionCampoVectorial();
     ArregloMatrizAbstracta[NIX][NIY].Direccion.x=0;
     ArregloMatrizAbstracta[NIX][NIY].Direccion.y=0;
-    QTimer * OrdasZombies = new QTimer;
+    //________________________________________________
+
+    // Este timer libera un numero de zombies cada TiempoEntreOrdas segundos.
+    OrdasZombies = new QTimer;
     connect(OrdasZombies, &QTimer::timeout,this,&game::LiberarOrdasZombies);
     OrdasZombies->start(TiempoEntreOrdas);
+
+    //Crear score.
+    if(modo==2){
+        score= new Score();
+        scene->addItem(score);
+        score->setPos(player->x()-600,player->y()-350);
+        score->setScale(2);
+    }
+
     connect(player,&player1::buttonClicked,this,&game::PerdisteElJuego);
     connect(player,&player1::buttonPressed,this,&game::ActualizarCamporVectorial);
-    QTimer * timer = new QTimer;
+    connect(player,&player1::buttonClicked2,this,&game::PausarTodoJuego);
+
+
+    // Actualiza la posicion de los zombies.
+    timer = new QTimer;
     connect(timer, &QTimer::timeout,this,&game::ActualizarZombies);
     timer->start(20);
-    QTimer * VerificarSiPasaNivel = new QTimer;
-    connect(VerificarSiPasaNivel, &QTimer::timeout,this,&game::VerificarSiYaPasadeNivel);
-    VerificarSiPasaNivel->start(20);
- //spawn enemies
-//    srand(time(NULL));
-//    QObject::connect(timer,SIGNAL(timeout()),player,SLOT(spawn()));
-    //    timer->start(2000);
+
+
+    // Está verificando si se pasa de nivel.
+    if(modo==1){
+        VerificarSiPasaNivel = new QTimer;
+        connect(VerificarSiPasaNivel, &QTimer::timeout,this,&game::VerificarSiYaPasadeNivel);
+        VerificarSiPasaNivel->start(10);
+    }
+
+    // crear barra de salud
+    hbar = new healthbar(player->get_vida());
+    scene->addItem(hbar);
+    hbar->setPos(player->x(),player->y()-20);
+
+    if(modo==1){
+    //add healer
+    Healer = new healer;
+    scene->addItem(Healer);
+    if(nivel==1)
+        Healer->setPos(100,335);
+    else
+        Healer->setPos(100,500);
+    }
+
+    //add ammo re-fill
+    Ammo = new ammo;
+    scene->addItem(Ammo);
+    Ammo->setPos(1780,1050);
+
+    //set ammo re-spawn time
+    re_fill = new QTimer;
+    connect(re_fill, &QTimer::timeout,this,&game::respawnAmmo);
+    re_fill->start(15000);
+
+    // Actualiza la posicion de la bara de vida y el score.
+    PosicionHealth=new QTimer;
+    connect(PosicionHealth, &QTimer::timeout,this,&game::ActualizarPosicionScore);
+    PosicionHealth->start(3);
+
+    view->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    //play background music
+    music = new QMediaPlayer;
+    music->setMedia(QUrl("qrc:/AUD/00.mp3"));
+    music->setVolume(25);
+    music->play();
+
+    //add foreground images
+    if(nivel==1)
+        view->setForegroundBrush(QBrush(QImage(":/BGI/fore1.png")));
+    else
+        view->setForegroundBrush(QBrush(QImage(":/BGI/fore2.png")));
 }
 
 game::~game()
 {
-    //delete this;
+    for(int i=0;i<Zombies.size();i++){
+        QList<enemy *>::iterator h=Zombies.begin();
+        delete Zombies.at(i);
+        h+=i;
+        Zombies.erase(h);
+        h.~iterator();
+    }
+
+    for (int i = 0; i<Paredes.size();i++){
+        QList<obstaculo *>::iterator V=Paredes.begin();
+        delete Paredes.at(i);
+        V+=i;
+        Paredes.erase(V);
+        V.~iterator();
+    }
+    delete re_fill;
+    delete PosicionHealth;
+    delete hbar;
+    if(modo==1)
+        delete Healer;
+    delete Ammo;
+    delete player;
+    if(modo==2){
+        delete player_2;
+        delete score;
+    }
+    delete music;
+    if(modo==1)
+        delete InterfazGanar;
+    delete InterfazPausa;
+    delete InterfazPerder;
+    if(modo==1)
+        delete InterfazPasarNivel;
+    delete OrdasZombies;
+    delete timer;
+    if(modo==1)
+        delete VerificarSiPasaNivel;
+    delete scene;
+    delete view;
 }
 
 void game::SetNivelOrda(int NivelAux, int OrdaAux)
 {
+    // Establece la orda y el nivel actual.
     nivel=NivelAux;
     Orda=OrdaAux;
 }
 
 void game::SetZombiesPorOrda()
 {
-    if(Orda==1){
-        TiempoEntreOrdas=6000;
-        SetNumeroZombies(6);
+    //Esta funcion establece el numero de zombies cada vez que el timer OrdasZombies se inicie. Según la orda en la que se encuentre.
+    if(modo==1){
+        if(Orda==1){
+            TiempoEntreOrdas=6000;
+            SetNumeroZombies(6);
+        }
+        else if(Orda==2){
+            TiempoEntreOrdas=15000;
+            SetNumeroZombies(9);
+        }
+        else if(Orda==3){
+            TiempoEntreOrdas=18000;
+            SetNumeroZombies(12);
+        }
     }
-    else if(Orda==2){
-        TiempoEntreOrdas=15000;
-        SetNumeroZombies(9);
-    }
-    else if(Orda==3){
-        TiempoEntreOrdas=18000;
-        SetNumeroZombies(12);
+    else
+    {
+        TiempoEntreOrdas+=1000;
+        zombiesPorSpawn+=2;
+        SetNumeroZombies(zombiesPorSpawn);
+
+
     }
 }
 
 void game::EstablecerMuros()
 {
-    QPen blackPen(Qt::black);
+    // Busqueda exhaustiva sobre la matriz de nodos y coloca un objeto obstaculo en la posicion de uno de los nodos..
     for(int fila=0;fila<24;fila++){
         for(int columna =0; columna<40; columna++){
-            if(fila==6 and columna==15 ){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,100,150);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
+            if(nivel==1){
+                if(fila==6 and columna==15 ){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,145);
+                     Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==7 and columna==22 ){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==5 and columna==2 ){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==6 and columna==28 ){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,145);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==4 and columna==0){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==7 and columna==32){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==8 and columna==25){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==10 and columna==5){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,145);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==8 and columna==0){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,195,245);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==13 and columna==11){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==11 and columna==15){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==14 and columna==17){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==13 and columna==22){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==13 and columna==30){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==9 and columna==31){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,145,195);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==15 and columna==38){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==16 and columna==37){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==17 and columna==1){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,145);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==19 and columna==9){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,145);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==19 and columna==18){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,145);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==23 and columna==22){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,145);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==18 and columna==26){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==16 and columna==32){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
             }
-            else if(fila==7 and columna==22 ){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,50,100);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
+            else {
+                if(fila==1 and columna==0 ){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==5 and columna==2 ){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==4 and columna==24 ){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==6 and columna==13 ){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==6 and columna==17){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,145);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==4 and columna==24){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==6 and columna==24){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==9 and columna==17){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,45);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==9 and columna==21){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,245);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==9 and columna==26){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==10 and columna==9){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,45);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==8 and columna==33){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,195);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==8 and columna==38){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==12 and columna==17){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,195);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==12 and columna==25){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,45);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==14 and columna==1){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,45);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==14 and columna==7){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,45);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==13 and columna==17){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,45);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==14 and columna==31){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,45);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==16 and columna==23){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,45);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==20 and columna==2){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,145);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==20 and columna==17){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,45);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==21 and columna==25){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,45,45);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==21 and columna==37){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,145,145);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
+                else if(fila==18 and columna==29){
+                    obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,95,95);
+                    Auxiliar->setPen(Qt::NoPen);
+                    scene->addItem(Auxiliar);
+                    Paredes.push_back(Auxiliar);
+                }
             }
-            else if(fila==5 and columna==2 ){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,50,100);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==6 and columna==28 ){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,50,150);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==4 and columna==0){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,100,100);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==7 and columna==32){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,100,100);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==8 and columna==25){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,50,100);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==10 and columna==5){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,100,150);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==8 and columna==0){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,200,250);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==13 and columna==11){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,100,100);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==11 and columna==15){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,100,100);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==14 and columna==17){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,50,100);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==13 and columna==22){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,100,100);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==13 and columna==30){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,50,100);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==9 and columna==31){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,150,200);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==15 and columna==38){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,50,100);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==16 and columna==37){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,50,100);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==17 and columna==1){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,50,150);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==19 and columna==9){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,50,150);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==19 and columna==18){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,100,150);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==23 and columna==22){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,50,150);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==18 and columna==26){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,100,100);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-            else if(fila==16 and columna==32){
-                obstaculo * Auxiliar = new obstaculo(ArregloMatrizAbstracta[fila][columna].PosRX,ArregloMatrizAbstracta[fila][columna].PosRY,100,100);
-                scene->addItem(Auxiliar);
-                Paredes.push_back(Auxiliar);
-            }
-
         }
     }
 }
 
 bool game::PisoConFriccion()
 {
+    // Busqueda exhaustiva y establece en cual de los puntos del mapa hay fricción.
     for(int fila=0;fila<24;fila++){
         for(int columna =0; columna<40; columna++){
-            if(fila==4 and ((columna>=7 and columna<=11) or (columna>=15 and columna<=19) or (columna>=34 and columna <=39)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if (fila==5 and ((columna>=8 and columna<=10) or (columna>=15 and columna<=17) or (columna>=36 and columna<=39)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==6 and ((columna>=27 and columna<=31) or (columna>=35 and columna<=39)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==7 and ((columna>=27 and columna<=31) or (columna>=33 and columna<=39)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==8 and ((columna>=27 and columna<=31) or (columna>=33 and columna<=39)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==9 and ((columna>=5 and columna<=7) or (columna==35)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==10 and ((columna>=8 and columna<=9) or (columna==35)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==11 and ((columna>=8 and columna<=9) or (columna==14) or (columna>=29 and columna<=30)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==12 and ((columna>=3 and columna<=10) or (columna==14) or (columna==17) or (columna==18) or (columna>=28 and columna<=35) or (columna==39)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==13 and ((columna>=6 and columna<=8) or (columna==13) or (columna==14) or (columna==17) or (columna==18) or (columna>=28 and columna<=35) or (columna==39)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==14 and ((columna>=1 and columna<=2) or (columna==10) or (columna>=13 and columna==16) or (columna>=28 and columna <=39)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==15 and ((columna>=1 and columna<=2) or (columna>=10 and columna==13) or (columna>=16 and columna <=19) or (columna>=36 and columna <=37)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==16 and ((columna>=1 and columna<=3)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==17 and ((columna>=37 and columna<=38)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==18 and ((columna>=2 and columna<=6) or (columna>=14 and columna==15) or (columna==38)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==19 and ((columna>=2 and columna<=5) or (columna>=13 and columna==15) or (columna==38)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==20 and ((columna>=3 and columna<=5) or (columna>=11 and columna==16)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==21 and ((columna>=12 and columna==16)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==22 and ((columna>=13 and columna==17)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
-            else if(fila==23 and ((columna>=14 and columna==19)))
-                ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+            if(nivel==1){
+                if(fila==4 and ((columna>=7 and columna<=11) or (columna>=15 and columna<=19) or (columna>=34 and columna <=39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if (fila==5 and ((columna>=8 and columna<=10) or (columna>=15 and columna<=17) or (columna>=36 and columna<=39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==6 and ((columna>=27 and columna<=31) or (columna>=35 and columna<=39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==7 and ((columna>=27 and columna<=31) or (columna>=33 and columna<=39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==8 and ((columna>=27 and columna<=31) or (columna>=33 and columna<=39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==9 and ((columna>=5 and columna<=7) or (columna==35)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==10 and ((columna>=8 and columna<=9) or (columna==35)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==11 and ((columna>=8 and columna<=9) or (columna==14) or (columna>=29 and columna<=30)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==12 and ((columna>=3 and columna<=10) or (columna==14) or (columna==17) or (columna==18) or (columna>=28 and columna<=35) or (columna==39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==13 and ((columna>=6 and columna<=8) or (columna==13) or (columna==14) or (columna==17) or (columna==18) or (columna>=28 and columna<=35) or (columna==39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==14 and ((columna>=1 and columna<=2) or (columna==10) or (columna>=13 and columna==16) or (columna>=28 and columna <=39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==15 and ((columna>=1 and columna<=2) or (columna>=10 and columna==13) or (columna>=16 and columna <=19) or (columna>=36 and columna <=37)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==16 and ((columna>=1 and columna<=3)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==17 and ((columna>=37 and columna<=38)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==18 and ((columna>=2 and columna<=6) or (columna>=14 and columna==15) or (columna==38)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==19 and ((columna>=2 and columna<=5) or (columna>=13 and columna==15) or (columna==38)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==20 and ((columna>=3 and columna<=5) or (columna>=11 and columna==16)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==21 and ((columna>=12 and columna==16)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==22 and ((columna>=13 and columna==17)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==23 and ((columna>=14 and columna==19)))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+            }
+            else {
+                if(fila==5 and columna==26)
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if((fila>=7 and fila<=8) and columna==17)
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==7 and columna == 24)
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==10 and columna == 21)
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==11 and columna == 27)
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==13 and columna == 19)
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==15 and ((columna>=4 and columna<=5) or columna==34))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==16 and columna == 11)
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==16 and columna == 33)
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==16 and columna == 35)
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==18 and (columna>=24 and columna<=25))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==21 and (columna>=19 and columna<=20))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==22 and columna==6)
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==22 and (columna>=23 and columna<=24))
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+                else if(fila==22 and columna==35)
+                    ArregloMatrizAbstracta[fila][columna].PisoConFriccion=true;
+
+            }
 
         }
     }
@@ -275,58 +642,150 @@ bool game::PisoConFriccion()
 
 bool game::EstablecerPisoQuitaVida()
 {
+    // Busqueda exhaustiva y establece las zonas del mapa en las que el jugador recibe daño por el suelo.
     for(int fila=0;fila<24;fila++){
         for(int columna =0; columna<40; columna++){
-            if(fila==23 and ((columna>=0 and columna<=13) or (columna>=24 and columna<=39)))
-                ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
-            else if (fila==22 and ((columna>=0 and columna<=12) or (columna>=24 and columna<=29) or (columna>=37 and columna<=39)))
-                ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
-            else if(fila==21 and ((columna>=0 and columna<=11) or (columna>=24 and columna<=27) or columna==38))
-                ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
-            else if(fila==20 and ((columna>=0 and columna<=2) or (columna>=6 and columna<=10) or (columna>=26 and columna<=27)))
-                ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
-            else if(fila==19 and ((columna>=0 and columna<=1) or (columna>=6 and columna<=9)))
-                ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
-            else if(fila==18 and ((columna>=0 and columna<=1) or (columna>=7 and columna<=9)))
-                ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
-            else if(fila==17 and ((columna>=0 and columna<=1) or (columna>=7 and columna<=8)))
-                ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
-            else if((fila==15 and columna== 25) or (fila==16 and columna==26))
-                ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+            if(nivel==1){
+                if(fila==23 and ((columna>=0 and columna<=13) or (columna>=24 and columna<=39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if (fila==22 and ((columna>=0 and columna<=12) or (columna>=24 and columna<=29) or (columna>=37 and columna<=39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==21 and ((columna>=0 and columna<=11) or (columna>=24 and columna<=27) or columna==38))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==20 and ((columna>=0 and columna<=2) or (columna>=6 and columna<=10) or (columna>=26 and columna<=27)))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==19 and ((columna>=0 and columna<=1) or (columna>=6 and columna<=9)))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==18 and ((columna>=0 and columna<=1) or (columna>=7 and columna<=9)))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==17 and ((columna>=0 and columna<=1) or (columna>=7 and columna<=8)))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if((fila==15 and columna== 25) or (fila==16 and columna==26))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+            }
+            else {
+                if(fila==5 and ((columna>=0 and columna<=1) or (columna>=35 and columna<=37)))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if (fila==6 and ((columna>=0 and columna<=6) or (columna>=32 and columna<=39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==7 and ((columna>=0 and columna<=7) or (columna>=33 and columna<=39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==10 and (columna==0 or columna==39))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==11 and ((columna>=0 and columna<=2) or (columna>=37 and columna<=39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==12 and ((columna>=0 and columna<=5) or (columna>=32 and columna<=39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==13 and ((columna>=0 and columna<=7) or (columna>=32 and columna<=39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==14 and ((columna>=38 and columna<=39)))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==15 and columna==39)
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==16 and columna==39)
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==17 and (columna==0 or columna==1 or (columna>=5 and columna<=9) or (columna>=37 and columna<=39) ))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==18 and ( (columna>=0 and columna<=7) or (columna>=32 and columna<=39) ))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==19 and ( (columna>=0 and columna<=6) or (columna>=32 and columna<=39) ))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==20 and ( (columna>=0 and columna<=3) or (columna>=37 and columna<=39) ))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+                else if(fila==21 and ( (columna>=0 and columna<=1)))
+                    ArregloMatrizAbstracta[fila][columna].PisoHaceDano=true;
+            }
         }
     }
 }
 
 void game::SetNumeroZombies(int Dificultad)
 {
+    // Establece el numero de zombies que salen por cada orda.
     NumeroZombies=Dificultad;
-}
-
-void game::follow_char()
-{
-    //view->centerOn(QPoint(player->x(),player->y()));
 }
 
 void game::PerdisteElJuego()
 {
-    QMessageBox::information(this,"DERROTA","PERDISTE. ERAS LA ULTIMA ESPERANZA DE LA HUMANIDAD Y FALLASTE. ");
-    this->~game();
+    // Se detienen todos los timers y muestra la interfaz de perder.
+    InterfazPerder->show();
+    OrdasZombies->stop();
+    timer->stop();
+    if(modo==1)
+        VerificarSiPasaNivel->stop();
+    player->TecladoBloqueado=true;
+    player->PonerTodoEnCero();
+    if(modo==2)
+        player_2->PonerTodoEnCero();
+    music->stop();
 }
 
 void game::VerificarSiYaPasadeNivel()
 {
-    if(Zombies.size()==0 and Orda==3){
-         QMessageBox::information(this,"VICTORIA","EXCELENTE. VIAJA A LA SIGUIENTE CIUDAD. ");
-         this->~game();
+    // Verifica si ya pasó de nivel o en su defecto ganó el juego.
+    //qDebug()<<Zombies.size()<<" "<<nivel<<" "<<Orda;
+    if(Zombies.size()==0 and nivel==3 and Orda==3 and ContadorNumeroMaximoZombies>=80){
+        InterfazGanar->show();
+        player->TecladoBloqueado=true;
+        player->PonerTodoEnCero();
+        OrdasZombies->stop();
+        timer->stop();
+        VerificarSiPasaNivel->stop();
+        music->stop();
     }
+    else if((Zombies.size()==0 and Orda==3 and ContadorNumeroMaximoZombies>=80)){
+        *NivelRetornar+=1;
+        InterfazPasarNivel->show();
+         player->TecladoBloqueado=true;
+         player->PonerTodoEnCero();
+         OrdasZombies->stop();
+         timer->stop();
+         VerificarSiPasaNivel->stop();
+         music->stop();
+    }
+    //////////// aprovecha la siguiente función, llamada por un timer cada X milisegundos para actualizar la posición de la Healthbar
+    hbar->setPos(player->x(),player->y()-20);
+    hbar->setWidth(player->get_vida());
+    scene->update();
+    view->centerOn(player->x(),player->y());
+}
+
+void game::ContinuarJugando()
+{
+    // Inicializa nuevamente todos los timers.
+    PosicionHealth->start(3);
+    OrdasZombies->start(TiempoEntreOrdas);
+    timer->start(20);
+    if(modo==1)
+        VerificarSiPasaNivel->start(20);
+    InterfazPausa->close();
+    player->TecladoBloqueado=false;
+    player->PonerTodoEnCero();
+    if(modo==2)
+        player_2->PonerTodoEnCero();
+    music->play();
+}
+
+void game::respawnAmmo()
+{
+    Ammo->setPos(1780,1050);
+}
+
+void game::ActualizarPosicionScore()
+{
+    if(modo==2){
+        QPointF sceneCenter = view->mapToScene( view->viewport()->rect().center() );
+          score->setPos(sceneCenter.x()-600,sceneCenter.y()-300);
+    }
+    hbar->setPos(player->x(),player->y()-20);
+    hbar->setWidth(player->get_vida());
+    scene->update();
 }
 
 void game::InicializarCuadros()
 {
     // Si se cambia de mapa tener cuidado si se cambia la cantidad de cuadros que hay.
-    QPen BlackPen(Qt::black);
-    QBrush BlackBrush(Qt::black);
-
+    // Estable las posiciones en la escena de todos los nodos y determina si son intrasitables o no.
     int posy = 25;
     for(int fila =0;fila <24;fila++){
         int posx=25;
@@ -350,11 +809,7 @@ void game::InicializarCuadros()
 void game::EstablecerZombies(float PosicionInicialX, float PosicionInicialY)
 {
     // Esta funcion crea un zombie, lo pone en la posicion (PosicionInicialX, PosicionInicialY) y lo agrega a la lista de enemigos.
-    QPen BlackPen(Qt::black);
-    QBrush RedBrush(Qt::yellow);
     enemy * aux = new enemy ();
-    aux->setBrush(RedBrush);
-    aux->setPen(BlackPen);
     aux->posx=PosicionInicialX;
     aux->posy=PosicionInicialY;
     CaracteristicasZombiesPorNivelYOrda(aux);
@@ -430,49 +885,85 @@ void game::LiberarOrdasZombies()
 {
     // Esta funcion Despliega los zombies dada la posicion de un determinado nodo.
     // Esta funcion en realidad va a ser un slot. Cada determinado segundo va a liberar una nueva orda de zombies.
-    int static ContadorNumeroMaximoZombies=0;
     ContadorNumeroMaximoZombies+=NumeroZombies;
-    if(Orda==1){
-        if(ContadorNumeroMaximoZombies>=60){
-            if(Zombies.size()==0){
+    if(modo==1)
+    {
+        if(Orda==1){
+            if(ContadorNumeroMaximoZombies>=40){
+                if(Zombies.size()==0){
+                    Orda++;
+                    SetZombiesPorOrda();
+                    ContadorNumeroMaximoZombies=0;
+                    if(nivel==1)
+                        Healer->setPos(100,335);
+                    else
+                        Healer->setPos(100,500);
+                }
+                return;
+            }
+        }
+        else if(Orda==2){
+            if(ContadorNumeroMaximoZombies>=60){
+                if(Zombies.size()==0){
+                    Orda++;
+                    SetZombiesPorOrda();
+                    ContadorNumeroMaximoZombies=0;
+                    if(nivel==1)
+                        Healer->setPos(100,335);
+                    else
+                        Healer->setPos(100,500);
+                }
+                return;
+            }
+        }
+        else if(Orda==3){
+            if(ContadorNumeroMaximoZombies>=80){
+                return;
+            }
+        }
+    }
+    else
+    {
+        if(ContadorNumeroMaximoZombies>=maximoNumeroZombiesPorOrda)
+        {
+            if(Zombies.size()==0)
+            {
                 Orda++;
                 SetZombiesPorOrda();
                 ContadorNumeroMaximoZombies=0;
+                maximoNumeroZombiesPorOrda+=4;
             }
             return;
         }
     }
-    else if(Orda==2){
-        if(ContadorNumeroMaximoZombies>=90){
-            if(Zombies.size()==0){
-                Orda++;
-                SetZombiesPorOrda();
-                ContadorNumeroMaximoZombies=0;
-            }
-            return;
-        }
-    }
-    else if(Orda==3){
-        if(ContadorNumeroMaximoZombies>=120){
-            return;
-        }
-    }
-
     srand(time(NULL));
-    vector <int> ColumnasDespliegue1={5,12,13,14,20,19,18,24,25,26,33};
-    vector <int> FilasDespliegue1={15,14,13,12};
-    vector <int> FilasDespliegue2={14,13,12,11,10,9,8};
-    for(int contadorZombies=0;contadorZombies<(NumeroZombies*2)/3;contadorZombies++){
-        int ColumnaAleatoria= rand()% 9 ;
-        EstablecerZombies(ArregloMatrizAbstracta[3][ColumnasDespliegue1[ColumnaAleatoria]].PosRX-23,ArregloMatrizAbstracta[3][ColumnasDespliegue1[ColumnaAleatoria]].PosRY-23);
+    if(nivel==1){
+        vector <int> ColumnasDespliegue1={5,12,13,14,20,19,18,24,25,26,33};
+        vector <int> FilasDespliegue1={15,14,13,12};
+        vector <int> FilasDespliegue2={14,13,12,11,10,9,8};
+        for(int contadorZombies=0;contadorZombies<(NumeroZombies*2)/3;contadorZombies++){
+            int ColumnaAleatoria= rand()% 9 ;
+            EstablecerZombies(ArregloMatrizAbstracta[3][ColumnasDespliegue1[ColumnaAleatoria]].PosRX-23,ArregloMatrizAbstracta[3][ColumnasDespliegue1[ColumnaAleatoria]].PosRY-23);
+        }
+        for(int contadorZombies=0; contadorZombies<(NumeroZombies)/6;contadorZombies++){
+            int FilaAleatoria = rand()% 3;
+            EstablecerZombies(ArregloMatrizAbstracta[FilasDespliegue1[FilaAleatoria]][0].PosRX-23,ArregloMatrizAbstracta[FilasDespliegue1[FilaAleatoria]][0].PosRY-23);
+        }
+        for(int contadorZombies=0; contadorZombies<(NumeroZombies)/6;contadorZombies++){
+            int FilaAleatoria=rand()% 7;
+            EstablecerZombies(ArregloMatrizAbstracta[FilasDespliegue2[FilaAleatoria]][39].PosRX-23,ArregloMatrizAbstracta[FilasDespliegue2[FilaAleatoria]][39].PosRY-23);
+        }
     }
-    for(int contadorZombies=0; contadorZombies<(NumeroZombies)/6;contadorZombies++){
-        int FilaAleatoria = rand()% 3;
-        EstablecerZombies(ArregloMatrizAbstracta[FilasDespliegue1[FilaAleatoria]][0].PosRX-23,ArregloMatrizAbstracta[FilasDespliegue1[FilaAleatoria]][0].PosRY-23);
-    }
-    for(int contadorZombies=0; contadorZombies<(NumeroZombies)/6;contadorZombies++){
-        int FilaAleatoria=rand()% 7;
-        EstablecerZombies(ArregloMatrizAbstracta[FilasDespliegue2[FilaAleatoria]][39].PosRX-23,ArregloMatrizAbstracta[FilasDespliegue2[FilaAleatoria]][39].PosRY-23);
+    else {
+        vector <int> ColumnasDespliegue1={12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29};
+        for(int contadorZombies=0;contadorZombies<(NumeroZombies);contadorZombies++){
+            int ColumnaAleatoria= rand()% 17 ;
+            EstablecerZombies(ArregloMatrizAbstracta[22][ColumnasDespliegue1[ColumnaAleatoria]].PosRX-23,ArregloMatrizAbstracta[22][ColumnasDespliegue1[ColumnaAleatoria]].PosRY-23);
+        }
+        for(int contadorZombies=0;contadorZombies<(NumeroZombies/2);contadorZombies++){
+            int ColumnaAleatoria= rand()% 17 ;
+            EstablecerZombies(ArregloMatrizAbstracta[1][ColumnasDespliegue1[ColumnaAleatoria]].PosRX-23,ArregloMatrizAbstracta[1][ColumnasDespliegue1[ColumnaAleatoria]].PosRY-23);
+        }
     }
 
 }
@@ -481,93 +972,147 @@ bool game::CrearObstaculosMapa(int fila, int columna)
 {
     // Esta funcion es para crear de una manera rapida todos los obstaculos que hayan en el mapa
     // De acuerdo a una determinadas condiciones.
-    if((fila>=3 and fila <= 5) and (columna ==0 or columna == 1))
-        return true;
-    else if( fila == 5 and (columna==2 or columna==3))
-        return true;
-    else if(fila == 6 and ((columna>=15 and columna <= 17) or (columna>=28 and columna<=30) or (columna>=35 and columna<=37)))
-        return true;
-    else if(fila == 7 and ((columna>=15 and columna <= 17) or (columna>=22 and columna<=23) or (columna>=32 and columna<=33)))
-        return true;
-    else if(fila == 8 and ((columna>=25 and columna <= 26) or (columna>=32 and columna<=33)))
-        return true;
-    else if(fila == 9 and (columna>=31 and columna<=34))
-        return true;
-    else if(fila == 10  and ((columna>=5 and columna<=7) or (columna>=31 and columna<=34)))
-        return true;
-    else if(fila == 11  and ((columna>=5 and columna<=7) or (columna>=15 and columna<=16) or (columna>=31 and columna<=34)))
-        return true;
-    else if(fila == 12  and ((columna>=11 and columna<=12) or (columna>=15 and columna<=16)))
-        return true;
-    else if(fila == 13  and ((columna>=11 and columna<=12) or (columna>=22 and columna<=23) or (columna>=30 and columna<=31)))
-        return true;
-    else if(fila == 14  and ((columna>=11 and columna<=12) or (columna>=17 and columna<=18) or (columna>=22 and columna<=23)))
-        return true;
-    else if(fila == 15  and ( columna==38 or columna == 39))
-        return true;
-    else if(fila == 16  and ((columna>=32 and columna<=33) or (columna>=37 and columna<=38)))
-        return true;
-    else if(fila == 17  and (columna == 2 or columna==3 or columna == 32 or columna == 33))
-        return true;
-    else if(fila == 18  and (columna == 26 or columna==27))
-        return true;
-    else if(fila == 19  and (columna == 10 or columna==11 or columna == 20 or columna==19 or columna== 18 or columna==26 or columna == 27))
-        return true;
-    else if(fila == 20  and ( columna == 20 or columna==19 or columna== 18))
-        return true;
-    else
-        return false;
-}
-
-void game::BorrarZombie()
-{
-
+    if(nivel==1){
+        if((fila>=3 and fila <= 5) and (columna ==0 or columna == 1))
+            return true;
+        else if( fila == 5 and (columna==2 or columna==3))
+            return true;
+        else if(fila == 6 and ((columna>=15 and columna <= 17) or (columna>=28 and columna<=30) or (columna>=35 and columna<=37)))
+            return true;
+        else if(fila == 7 and ((columna>=15 and columna <= 17) or (columna>=22 and columna<=23) or (columna>=32 and columna<=33)))
+            return true;
+        else if(fila == 8 and ((columna>=25 and columna <= 26) or (columna>=32 and columna<=33)))
+            return true;
+        else if(fila == 9 and (columna>=31 and columna<=34))
+            return true;
+        else if(fila == 10  and ((columna>=5 and columna<=7) or (columna>=31 and columna<=34)))
+            return true;
+        else if(fila == 11  and ((columna>=5 and columna<=7) or (columna>=15 and columna<=16) or (columna>=31 and columna<=34)))
+            return true;
+        else if(fila == 12  and ((columna>=11 and columna<=12) or (columna>=15 and columna<=16)))
+            return true;
+        else if(fila == 13  and ((columna>=11 and columna<=12) or (columna>=22 and columna<=23) or (columna>=30 and columna<=31)))
+            return true;
+        else if(fila == 14  and ((columna>=11 and columna<=12) or (columna>=17 and columna<=18) or (columna>=22 and columna<=23)))
+            return true;
+        else if(fila == 15  and ( columna==38 or columna == 39))
+            return true;
+        else if(fila == 16  and ((columna>=32 and columna<=33) or (columna>=37 and columna<=38)))
+            return true;
+        else if(fila == 17  and (columna == 2 or columna==3 or columna == 32 or columna == 33))
+            return true;
+        else if(fila == 18  and (columna == 26 or columna==27))
+            return true;
+        else if(fila == 19  and (columna == 10 or columna==11 or columna == 20 or columna==19 or columna== 18 or columna==26 or columna == 27))
+            return true;
+        else if(fila == 20  and ( columna == 20 or columna==19 or columna== 18))
+            return true;
+        else
+            return false;
+    }
+    else {
+        if((fila>=1 and fila <= 2) and (columna ==0 or columna == 1))
+            return true;
+        else if( (fila>=4 and fila <= 5) and (columna==24 or columna==25))
+            return true;
+        else if((fila>=6 and fila <= 7) and ((columna>=13 and columna <= 14)))
+            return true;
+        else if(fila == 6 and ((columna>=17 and columna <= 19) or (columna>=24 and columna <= 25)))
+            return true;
+        else if(fila == 8 and ((columna>=33 and columna <= 36)))
+            return true;
+        else if(fila == 9 and (columna==17 or (columna>=21 and columna<=27) or columna==38 or columna==39))
+            return true;
+        else if(fila == 10  and ((columna>=26 and columna<= 27)))
+            return true;
+        else if(fila == 12  and ((columna>=17 and columna<=20) or columna==25))
+            return true;
+        else if((fila>=13 and fila <= 14)  and columna== 7)
+            return true;
+        else if((fila>=14 and fila <= 15)  and columna== 31)
+            return true;
+        else if((fila>=18 and fila <= 19)  and (columna>=29 and columna<=30))
+            return true;
+        else if((fila>=20 and fila <= 21) and ( columna>=2 and columna<=4))
+            return true;
+        else if((fila>=20 and fila <= 23) and ( columna>=36 and columna<=39))
+            return true;
+        else
+            return false;
+    }
 }
 
 void game::CaracteristicasZombiesPorNivelYOrda(enemy * actual)
 {
-    if(nivel==1){
-        if(Orda==1){
-            actual->Dano=1;
-            actual->Masa=80;
-            actual->VelocidadMaxima=30;
-            actual->reduccion=30;
+    // Dependiendo del nivel y orda en el que se encuentre el personaje los zombies van a tener ciertas caracteristicas.
+    if(modo==1)
+    {
+        if(nivel==1){
+            if(Orda==1){
+                actual->Dano=1;
+                actual->Masa=80;
+                actual->VelocidadMaxima=30;
+                actual->reduccion=30;
+            }
+            else if (Orda==2) {
+                actual->Dano=2;
+                actual->Masa=70;
+                actual->VelocidadMaxima=40;
+                actual->reduccion=25;
+            }
+            else if (Orda==3) {
+                actual->Dano=3;
+                actual->Masa=60;
+                actual->VelocidadMaxima=50;
+                actual->reduccion=20;
+            }
         }
-        else if (Orda==2) {
-            actual->Dano=2;
-            actual->Masa=70;
-            actual->VelocidadMaxima=40;
-            actual->reduccion=25;
-        }
-        else if (Orda==3) {
-            actual->Dano=3;
-            actual->Masa=60;
-            actual->VelocidadMaxima=50;
-            actual->reduccion=20;
+        else {
+            if(Orda==1){
+                actual->Dano=3;
+                actual->Masa=100;
+                actual->VelocidadMaxima=50;
+                actual->reduccion=25;
+            }
+            else if (Orda==2) {
+                actual->Dano=4;
+                actual->Masa=90;
+                actual->VelocidadMaxima=55;
+                actual->reduccion=20;
+            }
+            else if (Orda==3) {
+                actual->Dano=5;
+                actual->Masa=80;
+                actual->VelocidadMaxima=60;
+                actual->reduccion=15;
+            }
         }
     }
-    else {
-        if(Orda==1){
-            actual->Dano=3;
-            actual->Masa=100;
-            actual->VelocidadMaxima=50;
-            actual->reduccion=25;
-        }
-        else if (Orda==2) {
-            actual->Dano=4;
-            actual->Masa=90;
-            actual->VelocidadMaxima=55;
-            actual->reduccion=20;
-        }
-        else if (Orda==3) {
-            actual->Dano=5;
-            actual->Masa=80;
-            actual->VelocidadMaxima=60;
-            actual->reduccion=15;
-        }
+    else
+    {
+        actual->Dano=Orda;
+        actual->Masa=(Orda*10)+60;
+        actual->VelocidadMaxima=40;
+        actual->reduccion=25;
     }
 }
+int game::getmodo()
+{
+    return modo;
+}
 
+void game::PausarTodoJuego()
+{
+    // Detiene todos los timers
+    PosicionHealth->stop();
+    OrdasZombies->stop();
+    timer->stop();
+    if(modo==1)
+        VerificarSiPasaNivel->stop();
+    music->stop();
+    InterfazPausa->show();
+
+}
 
 void game::ActualizarCamporVectorial()
 {
