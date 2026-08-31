@@ -1,19 +1,18 @@
-#ifndef PLAYER1_H
-#define PLAYER1_H
+#ifndef PLAYER2_H
+#define PLAYER2_H
 
 #include <QGraphicsRectItem>
 #include <QObject>
 #include <QGraphicsPixmapItem>
 #include <QPainter>
+#include "player1.h"
 
-class player1: public QObject, /*public QGraphicsRectItem,*/ public QGraphicsPixmapItem
+class player2: public QObject,/* public QGraphicsRectItem,*/ public QGraphicsPixmapItem
 {
     Q_OBJECT
 public:
-    player1();
-    ~player1();
-    void keyPressEvent(QKeyEvent * event);
-    void keyReleaseEvent(QKeyEvent *event);
+    player2();
+    ~player2();
     QTimer *movtimer;
     QTimer *acelerate;
     QTimer *timer_anim;
@@ -22,12 +21,9 @@ public:
     float Vf = 1.4;
     float a = 0.1;
     void RestarVida(int);
-    bool TecladoBloqueado=false;
-    void PonerTodoEnCero();
     float get_vida();
-    void set_vida(int val);
+    void PonerTodoEnCero();
 public slots:
-    void spawn();
     void move();
     void change_speed();
     void animate();
@@ -35,20 +31,16 @@ public slots:
 signals:
     void buttonPressed();
     void buttonClicked();
-    void buttonClicked2();
-private:
-    int Vida=100;
+public:
+    float Vida=100;
     int L=0;
     int R=0;
     int U=0;
     int D=0;
     int i=0;    //animation index
     char aim;
-    int shots=0; //shots counter (cartridge)
+    int shots=0; //counter of bullets
 
     //float V = 0;
-
 };
-
-
-#endif // PLAYER1_H
+#endif // PLAYER2_H

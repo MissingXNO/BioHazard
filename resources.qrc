@@ -8,7 +8,33 @@
         <file>MOV/U.png</file>
         <file>MOV/UL.png</file>
         <file>MOV/UR.png</file>
-        <file>BGI/escenario.png</file>
         <file>BGI/escenario2.png</file>
+        <file>2D/city.gif</file>
+        <file>2D/laser.mp3</file>
+        <file>2D/laser.png</file>
+        <file>2D/off.png</file>
+        <file>2D/on.png</file>
+        <file>2D/Ship.png</file>
+        <file>2D/Ship2.png</file>
+        <file>2D/track1.mp3</file>
+        <file>MOV/mutant.png</file>
+        <file>AUD/00.mp3</file>
+        <file>BGI/escenario.png</file>
+        <file>2D/ammo.png</file>
+        <file>2D/healer.png</file>
+        <file>MOV/D2.png</file>
+        <file>MOV/DL2.png</file>
+        <file>MOV/DR2.png</file>
+        <file>MOV/L2.png</file>
+        <file>MOV/R2.png</file>
+        <file>MOV/U2.png</file>
+        <file>MOV/UL2.png</file>
+        <file>MOV/UR2.png</file>
+        <file>BGI/controles.jpeg</file>
+        <file>BGI/main.png</file>
+        <file>BGI/b_tex.png</file>
+        <file>BGI/fore1.png</file>
+        <file>BGI/fore2.png</file>
+        <file>BGI/fscreen.png</file>
     </qresource>
 </RCC>
