@@ -22,14 +22,14 @@ https://www.youtube.com/watch?v=Mn0KQ3iGBPY
 
 * 2D top-down player movement
 * <img width="16" alt="mutant" src="https://github.com/user-attachments/assets/92400270-e8cd-4358-a780-71aff7ab94e1" /> Wave-based enemy spawning
-* <img width="16" height="16" alt="laser" src="https://github.com/user-attachments/assets/cf97bb9b-1070-425d-a3fe-5b7126ad671a" /> Directional projectile system
-* <img width="16" height="16" alt="UL2" src="https://github.com/user-attachments/assets/bdd045cc-9e1a-4889-b809-becf51a9b3e8" /> Sprite-based character animation
+* <img width="16" height="" alt="laser" src="https://github.com/user-attachments/assets/cf97bb9b-1070-425d-a3fe-5b7126ad671a" /> Directional projectile system
+* <img width="32" height="" alt="UL2" src="https://github.com/user-attachments/assets/bdd045cc-9e1a-4889-b809-becf51a9b3e8" /> Sprite-based character animation
 * Tile-based map representation
 * <img width="16" alt="ammo" src="https://github.com/user-attachments/assets/6109203c-90a2-4d01-a3b8-f1f6058b7e58" /> Collision detection with map obstacles and collectable items
 * Enemy navigation using a vector-field approach
 * Damage zones
 * Surfaces with movement friction and enemies with physics-based movement
-* <img width="16" height="16" alt="healer" src="https://github.com/user-attachments/assets/c78c9443-6678-4a44-bde0-c7f2d14fd82c" /> Player health system
+* <img width="16" height="" alt="healer" src="https://github.com/user-attachments/assets/c78c9443-6678-4a44-bde0-c7f2d14fd82c" /> Player health system
 * <img width="16" alt="icon" src="https://github.com/user-attachments/assets/61202ba8-82b2-4c9e-81d4-72594de6d7fe" /> Progressive enemy difficulty across waves
 * Victory and defeat conditions
 
